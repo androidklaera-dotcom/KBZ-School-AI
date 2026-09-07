@@ -1,116 +1,742 @@
-// Auto-generated from the creator-approved Grade 5–12 class timetable PDFs.
-// Each section stores 40 cells in fixed order: Monday-Friday, P1-P8.
-// Break and prayer columns are excluded by coordinate, so they can never become periods.
+import OpenAI from 'openai';
+import classes from '../data/classes.js';
+import teachers from '../data/teachers.js';
+import {PERIODS,CONTACT,CLINIC,BOOKS,ALEF,LMS,WEBSITE,GRADE_LINKS,TEACHER_ALIASES} from '../data/knowledge.js';
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-const SUBJECTS = ["AI&TEC", "Arabic", "Arts", "B.A A", "Biology", "Chaina", "Chemis", "English", "FRENCH", "Helth", "Islamic", "Math", "Physical", "Physics", "SOCIAL", "Science"];
-const TEACHERS = ["A . Alsena ne", "A Swadha", "ABD HAMDAN", "ABDALLA H", "ABDRHMA N KA", "ABDULRA QEB", "AHMED EL.", "ANZIL MA", "ASHRAF", "Ahmed Alshar", "Ahmed Haza", "Ahmed S.A", "Alisa", "Ameer", "Ashish", "Ayman", "DHIA CH.", "Elsayed", "Eyad", "FADI A.", "FALEH A", "Gamal", "HANI A.", "HANI Z.", "Hisham", "Jalal", "KELSEY", "Kalid E", "Long Jin", "M Graibah", "MAHMOUD SA", "MOAIAD K.", "MOHAMD S.", "Mo Muktar", "Moh Krime n", "Moh Mohye", "Mohamed Hafez", "Mushtag", "Najeh", "PRIYA P.", "RAED Y.", "Rabea", "Same", "Shawkat", "Sohail Kas", "Sohail sham", "TAISIER Ar", "Tamir", "WAEL", "WAHBI", "Wang Jian", "hisham Ahmed", "m alkendi"];
+const teacherNames=teachers.map(t=>t.teacher);
+const sections=[...new Set(classes.map(c=>c.Section))];
+const rate=new Map();
 
-const JUNIOR_TIMES = {
-  "1": "07:30–08:15",
-  "2": "08:15–09:00",
-  "3": "09:25–10:10",
-  "4": "10:10–10:55",
-  "5": "10:55–11:40",
-  "6": "11:40–12:25",
-  "7": "12:40–13:25",
-  "8": "13:25–14:10"
-};
+function isArabic(s){return /[\u0600-\u06FF]/.test(s)}
+function norm(s=''){return s.toLowerCase().normalize('NFKD').replace(/[.]/g,'').replace(/[^a-z0-9\u0600-\u06ff]+/g,' ').trim()}
+function escRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}
 
-const SENIOR_TIMES = {
-  "1": "07:30–08:15",
-  "2": "08:15–09:00",
-  "3": "09:00–09:45",
-  "4": "10:10–10:55",
-  "5": "10:55–11:40",
-  "6": "11:40–12:25",
-  "7": "12:25–13:10",
-  "8": "13:25–14:10"
-};
+function extractGrade(s){
+  const m=s.match(/(?:grade|gr|صف|الصف)\s*(1[0-2]|[5-9])\b/i)
+    || s.match(/\b(1[0-2]|[5-9])\s*\/?\s*[AG]\s*\d(?:\s*S\s*\d)?\b/i);
+  return m?Number(m[1]):null
+}
 
-const SECTION_DATA = [
-[5,"5/G1","15.39,7.41,11.5,1.31,11.5,10.40,12.22,12.22,2.6,0.10,11.5,15.39,14.23,11.5,7.41,1.31,11.5,7.41,15.39,1.31,0.10,2.6,15.39,10.40,14.23,11.5,8.16,1.31,15.39,10.40,11.5,7.41,8.16,15.39,7.41,1.31,-,-,-,-"],
-[5,"5/G2","0.10,10.40,7.41,11.5,1.31,11.5,15.39,2.6,7.41,2.6,1.31,11.5,15.39,14.23,12.22,12.22,7.41,1.31,8.16,15.39,11.5,15.39,11.5,7.41,11.5,1.31,7.41,11.5,10.40,15.39,14.23,0.10,10.40,1.31,8.16,15.39,-,-,-,-"],
-[6,"6/G1","11.5,14.52,15.29,10.11,2.49,1.31,0.2,7.41,11.5,15.29,2.49,10.11,14.52,7.41,1.31,11.5,8.16,11.5,7.41,11.5,12.22,12.22,15.29,1.31,8.16,7.41,11.5,0.2,10.11,15.29,1.31,15.29,11.5,15.29,1.31,7.41,-,-,-,-"],
-[6,"6/G2","10.11,11.5,1.31,7.41,7.41,0.2,15.29,11.5,1.31,11.5,7.41,15.29,10.11,1.31,11.5,14.52,15.29,8.16,0.2,2.49,7.41,11.5,12.22,12.22,14.52,15.29,2.49,8.16,15.29,1.31,10.11,11.5,1.31,7.41,11.5,15.29,-,-,-,-"],
-[7,"7/G1","15.43,2.6,10.40,1.19,11.34,11.34,0.24,7.26,15.43,10.40,11.34,1.19,7.26,15.43,7.26,2.6,11.34,7.26,14.52,1.19,10.40,11.34,15.43,8.16,12.22,12.22,7.26,1.19,15.43,11.34,0.24,8.16,14.52,15.43,11.34,1.19,-,-,-,-"],
-[7,"7/G2","1.19,7.26,11.20,15.43,14.52,1.19,10.40,15.43,11.20,15.43,7.26,11.20,2.6,11.20,10.40,1.19,7.26,11.20,1.19,7.26,15.43,0.24,10.40,2.6,11.20,14.52,15.43,0.24,7.26,11.20,12.22,12.22,1.19,8.16,15.43,8.16,-,-,-,-"],
-[7,"7/G3","15.18,1.19,12.22,12.22,7.26,11.20,7.26,10.40,7.26,0.24,15.18,2.6,11.20,1.19,11.20,10.40,1.19,15.18,15.18,11.20,8.16,10.40,7.26,14.52,7.26,15.18,2.6,14.52,11.20,1.19,8.16,11.20,15.18,0.24,1.19,11.20,-,-,-,-"],
-[8,"8/G1","11.20,10.45,7.26,11.20,14.23,15.43,1.44,2.49,12.22,12.22,10.45,0.2,15.43,7.26,1.44,11.20,10.45,14.23,7.26,1.44,11.20,15.43,11.20,7.26,1.44,7.26,0.2,2.49,14.23,15.43,11.20,15.43,1.44,7.26,11.20,15.43,-,-,-,-"],
-[8,"8/G2","7.26,11.20,14.23,0.2,1.44,10.45,15.43,11.20,14.23,11.20,15.43,2.49,10.45,1.44,15.43,7.26,1.44,2.49,11.20,14.23,7.26,11.20,0.2,15.43,10.45,1.44,11.20,12.22,12.22,7.26,15.43,7.26,15.43,11.20,7.26,1.44,-,-,-,-"],
-[9,"9/A1","1.44,14.8,11.7,4.14,13.47,5.28,10.11,7.30,11.7,4.14,12.22,12.22,1.44,7.30,11.7,13.47,5.28,13.47,10.11,11.7,4.14,1.44,7.30,0.2,11.7,14.8,7.30,1.44,13.47,7.30,11.7,4.14,0.2,11.7,1.44,13.47,-,-,-,-"],
-[9,"9/A2","14.8,11.7,13.39,11.7,1.46,11.7,7.13,0.2,5.28,7.13,11.7,1.46,4.14,11.7,13.39,10.11,11.7,4.14,12.22,12.22,7.13,1.46,10.11,13.39,1.46,7.13,13.39,5.28,11.7,1.46,4.14,0.2,14.8,4.14,13.39,7.13,-,-,-,-"],
-[9,"9/G1","3.12,10.11,5.28,7.30,2.32,1.44,11.4,15.33,11.4,7.30,5.28,15.33,3.12,11.4,14.8,1.44,14.8,11.4,7.30,0.2,15.33,11.4,1.44,1.44,15.33,10.11,15.33,7.30,11.4,1.44,12.42,12.42,7.30,0.2,11.4,15.33,-,-,-,-"],
-[9,"9/G2","7.30,5.28,7.30,1.44,11.4,10.11,15.33,11.4,12.42,12.42,0.2,1.44,7.30,15.33,15.33,11.4,15.33,1.44,5.28,14.8,7.30,10.11,11.4,3.12,0.2,11.4,3.12,2.32,1.44,11.4,15.33,1.44,15.33,11.4,14.8,7.30,-,-,-,-"],
-[9,"9/G3","1.46,15.39,0.2,15.39,7.30,11.4,14.8,2.32,14.8,5.28,11.4,7.30,1.46,10.11,11.4,15.39,11.4,15.39,3.12,7.30,11.4,0.2,1.46,7.30,11.4,7.30,11.4,10.11,5.28,3.12,1.46,15.39,15.39,1.46,12.42,12.42,-,-,-,-"],
-[9,"9/G4","5.28,1.46,10.11,2.32,3.12,15.51,7.30,11.7,1.46,11.7,7.30,15.51,15.51,3.12,5.28,0.2,1.46,14.8,11.7,12.42,12.42,15.51,11.7,10.11,7.30,11.7,15.51,1.46,0.2,11.7,14.8,7.30,1.46,7.30,15.51,11.7,-,-,-,-"],
-[9,"9/G5","11.7,15.51,1.46,14.8,0.2,7.30,5.28,10.11,7.30,1.46,15.51,11.7,11.7,0.2,3.12,7.30,7.30,11.7,2.32,15.51,1.46,11.7,12.42,12.42,5.28,15.51,11.7,3.12,14.8,15.51,7.30,1.46,11.7,15.51,10.11,1.46,-,-,-,-"],
-[10,"10/A1","11.34,6.29,13.51,0.24,5.50,1.1,12.42,1.1,13.51,7.38,12.42,1.1,6.29,10.45,7.38,11.34,13.51,6.29,5.50,11.34,10.45,1.1,11.34,7.38,13.51,0.24,7.38,11.34,7.38,14.23,13.51,11.34,1.1,11.34,6.29,14.23,-,-,-,-"],
-[10,"10/A2","5.50,11.34,11.34,10.45,13.51,6.29,7.38,1.19,11.34,1.19,5.50,11.34,7.38,6.29,13.51,14.23,12.42,12.42,11.34,0.24,7.38,6.29,1.19,13.51,1.19,11.34,6.29,7.38,11.34,7.38,10.45,13.51,13.51,1.19,14.23,0.24,-,-,-,-"],
-[10,"10/G1","7.13,11.35,15.47,1.21,12.42,12.42,11.35,14.23,0.24,2.32,14.23,7.13,15.47,7.13,11.35,1.21,3.12,11.35,1.21,11.35,15.47,10.45,5.50,15.47,7.13,3.12,11.35,10.45,5.50,15.47,1.21,7.13,15.47,11.35,0.24,1.21,-,-,-,-"],
-[10,"10/G2","12.42,12.42,11.35,7.13,10.45,3.12,1.19,15.47,1.19,5.50,11.35,15.47,1.19,0.24,14.23,11.35,7.13,10.45,15.47,7.13,11.35,1.19,11.35,7.13,11.35,15.47,0.24,14.23,11.35,5.50,15.47,1.19,7.13,15.47,2.6,3.12,-,-,-,-"],
-[10,"10/G3","1.1,7.13,0.24,14.23,11.3,5.50,15.47,7.13,15.47,11.3,2.6,10.45,7.13,15.47,1.1,3.12,1.1,5.50,7.13,11.3,0.24,15.47,11.3,14.23,12.42,12.42,11.3,1.1,10.45,7.13,11.3,15.47,3.12,1.1,15.47,11.3,-,-,-,-"],
-[10,"10/G4","11.4,14.23,7.13,11.4,1.1,0.24,15.15,3.12,1.1,15.15,3.12,11.4,12.42,12.42,7.13,10.45,15.15,1.1,0.24,11.4,15.15,14.23,2.6,5.50,5.50,10.45,7.13,11.4,1.1,15.15,7.13,11.4,11.4,7.13,15.15,1.1,-,-,-,-"],
-[11,"11/A1","4.14,13.33,7.27,12.0,12.0,11.35,1.17,11.35,10.9,11.35,9.37,7.27,11.35,1.17,7.27,13.33,5.50,14.52,11.35,6.29,1.17,9.37,13.33,1.17,6.29,7.27,7.27,1.17,14.52,13.33,5.50,11.35,10.9,13.33,7.27,11.35,-,-,-,-"],
-[11,"11/A2","11.35,1.17,0.10,7.25,13.33,12.0,12.0,10.9,11.35,14.52,13.33,11.35,1.17,7.25,4.14,6.29,11.35,13.33,7.25,10.9,5.50,1.17,7.25,6.29,7.25,1.17,0.10,11.35,13.33,11.35,14.52,7.25,11.35,1.17,13.33,5.50,-,-,-,-"],
-[11,"11/G1","1.17,4.14,11.48,14.52,11.48,7.27,2.49,7.27,5.50,1.17,11.48,12.0,12.0,7.27,0.10,6.18,11.48,11.48,1.17,14.52,10.9,4.14,7.27,0.10,6.18,2.49,5.50,7.27,10.9,1.17,11.48,2.49,7.27,0.10,1.17,11.48,-,-,-,-"],
-[11,"11/G2","11.48,0.10,6.18,7.27,1.17,11.48,14.52,5.50,4.14,7.27,14.52,1.17,2.49,5.50,10.9,11.48,7.13,10.45,15.47,7.13,11.35,1.19,11.35,7.13,11.35,15.47,0.24,14.23,11.35,5.50,15.47,1.19,7.13,15.47,2.6,3.12,-,-,-,-"],
-[11,"11/G3","10.9,11.48,9.37,5.50,6.18,4.14,7.27,1.46,0.10,11.48,7.27,9.37,6.18,1.46,11.48,4.14,12.0,12.0,1.46,7.27,14.52,11.48,0.10,10.9,9.37,1.46,11.48,0.10,7.27,11.48,7.27,5.50,11.48,14.52,1.46,7.27,-,-,-,-"],
-[12,"12/A1S1","12.0,12.0,1.17,7.38,0.10,13.15,11.36,7.38,7.38,11.36,4.14,5.28,10.9,13.15,11.36,1.17,11.36,1.17,7.38,4.14,11.36,14.8,7.38,13.15,11.36,0.10,4.14,11.36,1.17,14.8,13.15,1.17,5.28,13.15,10.9,7.38,-,-,-,-"],
-[12,"12/A2S2","11.36,1.1,7.38,13.15,7.38,9.37,6.18,14.8,11.36,10.9,1.1,4.14,5.28,7.38,13.15,1.1,6.18,13.15,12.0,11.36,1.1,11.36,10.9,5.28,13.15,7.38,11.36,14.8,13.15,1.1,11.36,9.37,7.38,7.38,11.36,4.14,-,-,-,-"],
-[12,"12/G1S1","1.21,11.36,2.32,6.18,11.36,14.8,7.25,5.28,1.21,7.25,10.9,0.10,2.32,12.0,12.0,11.36,7.25,11.36,0.10,5.28,7.25,1.21,14.8,4.14,4.14,7.25,2.32,10.9,1.21,6.18,0.10,11.36,1.21,11.36,7.25,11.36,-,-,-,-"],
-[12,"12/G2S1","7.25,6.18,11.3,0.10,4.14,10.9,1.21,1.21,6.18,14.8,1.21,2.32,0.10,11.3,11.3,7.25,11.3,7.25,4.14,7.25,5.28,11.3,1.21,2.32,14.8,11.3,5.28,1.21,0.10,7.25,10.9,2.32,12.0,12.0,11.3,7.25,-,-,-,-"],
-[12,"12/G3S1","11.3,1.21,4.14,5.28,9.37,7.25,11.3,6.18,11.3,1.21,7.25,10.9,11.3,14.8,2.32,9.37,9.37,11.3,14.8,6.18,1.21,2.32,2.32,7.25,1.21,10.9,7.25,11.3,7.25,4.14,5.28,11.3,7.25,1.21,12.0,12.0,-,-,-,-"]
-];
+function compactSection(s=''){
+  return String(s).toUpperCase().replace(/[^A-Z0-9]/g,'');
+}
 
-const rows = [];
+function extractSection(s=''){
+  const q=String(s).toUpperCase();
 
-for (const [grade, section, encoded] of SECTION_DATA) {
-  const cells = encoded.split(",");
+  // Match only real KBZ sections contained in classes.js.
+  // Supports 11/G1, 11G1, Grade 11 G1, 11 G 1, etc.
+  const compactQ=q.replace(/[^A-Z0-9]/g,'');
+  const matches=sections.filter(sec=>compactQ.includes(compactSection(sec)));
 
-  if (cells.length !== 40) {
-    throw new Error(
-      `Invalid class data for ${section}: expected 40 cells, got ${cells.length}`
-    );
+  if(matches.length===1)return matches[0];
+
+  const m=q.match(/(?:GRADE|GR)?\s*(1[0-2]|[5-9])\s*\/?\s*([AG])\s*(\d)(?:\s*(S)\s*(\d))?/i);
+
+  if(m){
+    const wanted=`${m[1]}/${m[2].toUpperCase()}${m[3]}${m[4]?`S${m[5]}`:''}`;
+    const exact=sections.find(sec=>compactSection(sec)===compactSection(wanted));
+    if(exact)return exact;
   }
 
-  let i = 0;
+  return null;
+}
 
-  for (const day of DAYS) {
-    for (let period = 1; period <= 8; period++, i++) {
-      const code = cells[i];
+function extractDay(s=''){
+  const n=norm(s);
 
-      let Subject = "";
-      let Teacher = "";
+  const tests=[
+    ['Monday',/\bmonday\b|\bmon\b|الاثنين|الإثنين/],
+    ['Tuesday',/\btuesday\b|\btue\b|الثلاثاء/],
+    ['Wednesday',/\bwednesday\b|\bwed\b|الأربعاء|الاربعاء/],
+    ['Thursday',/\bthursday\b|\bthu\b|الخميس/],
+    ['Friday',/\bfriday\b|\bfri\b|الجمعة/]
+  ];
 
-      if (code !== "-") {
-        const [s, t] = code.split(".").map(Number);
+  for(const [day,re] of tests){
+    if(re.test(n))return day;
+  }
 
-        Subject = SUBJECTS[s] ?? "";
-        Teacher = TEACHERS[t] ?? "";
-      }
+  return null;
+}
 
-      rows.push({
-        Grade: grade,
-        Section: section,
-        Day: day,
-        Period: period,
-        Time:
-          (grade <= 9 ? JUNIOR_TIMES : SENIOR_TIMES)[String(period)],
-        Subject,
-        Teacher
-      });
+function extractPeriod(s=''){
+  const n=norm(s);
+  const m=n.match(/\b(?:period|p|الحصة|حصه|حصة)\s*([1-8])\b/i);
+  return m?Number(m[1]):null;
+}
+
+function localIntent(q){
+  const n=norm(q);
+  const grade=extractGrade(q);
+  const section=extractSection(q);
+  const day=extractDay(q);
+  const period=extractPeriod(q);
+
+  if(/\b(alef)\b|منصة ألف|ألف/.test(n))
+    return {intent:'alef',grade};
+
+  if(/book|textbook|كتب|كتاب|الكتب/.test(n))
+    return {intent:'books',grade};
+
+  if(/password|student email|\blms\b|كلمة المرور|كلمه المرور|البريد|ايميل|إيميل|نظام lms|منصة lms/.test(n))
+    return {intent:'lms',grade};
+
+  if(/clinic|nurse|medical|عيادة|العيادة|ممرض|ممرضة|الصحية|صحي/.test(n))
+    return {intent:'clinic',grade};
+
+  if(/website|web site|موقع المدرسة|الموقع الرسمي/.test(n))
+    return {intent:'website',grade};
+
+  // Grade links ONLY when Telegram or WhatsApp is explicitly requested.
+  if(grade&&(/telegram|تلغرام|تليجرام|whatsapp|واتساب|واتس اب/.test(n))){
+    return {
+      intent:'grade_links',
+      grade,
+      channel:/telegram|تلغرام|تليجرام/.test(n)?'telegram':'whatsapp'
+    };
+  }
+
+  if(/contact school|school contact|phone number|call school|رقم المدرسة|التواصل مع المدرسة|اتصل بالمدرسة|هاتف المدرسة/.test(n))
+    return {intent:'contact',grade};
+
+  // IMPORTANT:
+  // Any recognized Grade 5–12 section automatically means CLASS TIMETABLE.
+  if(section){
+    return {
+      intent:'class_timetable',
+      section,
+      grade,
+      day,
+      period,
+      teacher:null,
+      channel:null
+    };
+  }
+
+  // Period/bell times only when a grade is given WITHOUT a section.
+  if(
+    grade &&
+    (
+      period ||
+      /period\s*time|periods?\b|bell\s*time|school\s*time|أوقات الحصص|اوقات الحصص|وقت الحصة|وقت حصه|الحصص/.test(n)
+    )
+  ){
+    return {
+      intent:'period_times',
+      grade,
+      period,
+      section:null,
+      teacher:null,
+      day:null,
+      channel:null
+    };
+  }
+
+  return null;
+}
+
+function dayName(d){
+  if(!d)return null;
+
+  const m={
+    monday:'Monday',
+    mon:'Monday',
+    'الاثنين':'Monday',
+    'الإثنين':'Monday',
+
+    tuesday:'Tuesday',
+    tue:'Tuesday',
+    'الثلاثاء':'Tuesday',
+
+    wednesday:'Wednesday',
+    wed:'Wednesday',
+    'الأربعاء':'Wednesday',
+    'الاربعاء':'Wednesday',
+
+    thursday:'Thursday',
+    thu:'Thursday',
+    'الخميس':'Thursday',
+
+    friday:'Friday',
+    fri:'Friday',
+    'الجمعة':'Friday'
+  };
+
+  return m[norm(d)]||d
+}
+
+function findTeacher(name){
+  if(!name)return null;
+
+  const a=TEACHER_ALIASES[norm(name)];
+  if(a)return teachers.find(t=>t.teacher===a)||null;
+
+  let exact=teachers.find(t=>norm(t.teacher)===norm(name));
+  if(exact)return exact;
+
+  const q=norm(name);
+  const qt=new Set(q.split(' '));
+
+  let best=null,score=0;
+
+  for(const t of teachers){
+    const tt=new Set(norm(t.teacher).split(' '));
+    let s=0;
+
+    for(const x of qt){
+      if(tt.has(x))s++;
+    }
+
+    s/=Math.max(qt.size,tt.size);
+
+    if(s>score){
+      score=s;
+      best=t;
     }
   }
+
+  return score>=0.45?best:null
 }
 
-// Fail closed if a break/prayer/anthem label ever gets into a period again.
-for (const r of rows) {
-  if (/\b(?:break|prayer|anthem)\b/i.test(r.Subject || "")) {
-    throw new Error(
-      `Structural timetable label found in ${r.Section} ${r.Day} P${r.Period}: ${r.Subject}`
+function teacherCellSubject(cell){
+  if(!cell)return '';
+
+  const s=cell
+    .replace(/\b(?:[5-9]|1[0-2])\/[AG]\d(?:S\d)?\b/ig,'')
+    .trim();
+
+  return s.replace(/^Cover\s+\d+$/i,'Cover').trim()
+}
+
+function teacherReverse(section,day,period){
+  const re=new RegExp(`\\b${escRe(section)}\\b`,'i');
+
+  return teachers.flatMap(t=>{
+    const cell=t.schedule?.[day]?.[String(period)]||'';
+
+    return re.test(cell)
+      ? [{teacher:t.teacher,cell,page:t.page}]
+      : [];
+  })
+}
+
+function sameSubject(a,b){
+  const clean=x=>norm(x)
+    .replace(/chem(is|istry)?/g,'chemistry')
+    .replace(/social studies?/g,'social');
+
+  return clean(a)===clean(b)
+}
+
+function formatClass(route,ar){
+  const section=route.section;
+  const day=dayName(route.day);
+  const period=route.period?Number(route.period):null;
+
+  if(!section){
+    return {
+      answer:ar
+        ?'يرجى ذكر رمز الصف/الشعبة، مثل 9/A1.'
+        :'Please include the class/section code, for example 9/A1.'
+    };
+  }
+
+  let rows=classes.filter(
+    c=>c.Section.toUpperCase()===String(section).toUpperCase()
+  );
+
+  if(!rows.length){
+    return {
+      answer:ar
+        ?`لم أجد الشعبة ${section} في جداول KBZ المعتمدة.`
+        :`I could not find section ${section} in the approved KBZ timetables.`
+    };
+  }
+
+  if(day)rows=rows.filter(c=>c.Day===day);
+  if(period)rows=rows.filter(c=>c.Period===period);
+
+  if(day&&period){
+    const c=rows[0];
+
+    if(!c){
+      return {
+        answer:ar
+          ?'لا توجد خانة مطابقة لهذا اليوم والحصة في المصدر المعتمد.'
+          :'No matching day/period cell was found in the approved source.'
+      };
+    }
+
+    const tr=teacherReverse(c.Section,c.Day,c.Period);
+
+    const mismatch=tr.find(x=>{
+      const s=teacherCellSubject(x.cell);
+      return s&&!sameSubject(s,c.Subject||'');
+    });
+
+    if(mismatch){
+      return {
+        answer:ar
+          ?`⚠️ يوجد تعارض بين المصدرين لـ ${c.Section} يوم ${c.Day} الحصة ${c.Period}.
+جدول الصف: ${c.Subject||'فارغ'} — ${c.Teacher||'غير مذكور'}.
+جدول المعلم: ${mismatch.cell} — صفحة المعلم ${mismatch.teacher}.
+لن أقوم بتصحيح التعارض أو التخمين.`
+          :`⚠️ There is a source conflict for ${c.Section}, ${c.Day}, Period ${c.Period}.
+Class timetable: ${c.Subject||'blank'} — ${c.Teacher||'not listed'}.
+Teacher timetable: ${mismatch.cell} — teacher page ${mismatch.teacher}.
+I will not reconcile or guess between the sources.`,
+        source:`Class timetable + Teachers timetable page ${mismatch.page}`
+      };
+    }
+
+    return {
+      answer:ar
+        ?`${c.Section} — ${c.Day} — الحصة ${c.Period} (${c.Time})
+${c.Subject||'لا توجد مادة'}${c.Teacher?` — ${c.Teacher}`:''}`
+        :`${c.Section} — ${c.Day} — Period ${c.Period} (${c.Time})
+${c.Subject||'No subject listed'}${c.Teacher?` — ${c.Teacher}`:''}`,
+      source:`Grade ${c.Grade} class timetable`
+    };
+  }
+
+  const order=[
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday'
+  ];
+
+  rows.sort(
+    (a,b)=>
+      order.indexOf(a.Day)-order.indexOf(b.Day)
+      || a.Period-b.Period
+  );
+
+  if(day){
+    const lines=rows.map(
+      c=>`${ar?'حصة':'P'}${c.Period} ${c.Time}: ${c.Subject||'—'}${c.Teacher?` — ${c.Teacher}`:''}`
     );
+
+    return {
+      answer:`${section} — ${day}
+${lines.join('\n')}`,
+      source:`Grade ${rows[0]?.Grade} class timetable`
+    };
+  }
+
+  const blocks=order.map(d=>{
+    const r=rows.filter(x=>x.Day===d);
+
+    return `${d}
+${r.map(c=>`P${c.Period} ${c.Time}: ${c.Subject||'—'}${c.Teacher?` — ${c.Teacher}`:''}`).join('\n')}`;
+  }).join('\n\n');
+
+  return {
+    answer:`${section}
+${blocks}`,
+    source:`Grade ${rows[0]?.Grade} class timetable`
+  };
+}
+
+function formatTeacher(route,ar){
+  const t=findTeacher(route.teacher);
+  const day=dayName(route.day);
+  const period=route.period?Number(route.period):null;
+
+  if(!t){
+    return {
+      answer:ar
+        ?'لم أتمكن من مطابقة اسم المعلم بشكل فريد مع صفحة معلم معتمدة. يرجى كتابة الاسم بشكل أوضح.'
+        :'I could not uniquely match that teacher to an approved teacher timetable page. Please provide a clearer name.'
+    };
+  }
+
+  const one=(d,p)=>{
+    const cell=t.schedule[d][String(p)]||'';
+
+    return cell||(
+      ar
+        ?'متاح / لا توجد مهمة مدونة'
+        :'Free / no source label in this checked cell'
+    );
+  };
+
+  if(day&&period){
+    return {
+      answer:ar
+        ?`${t.teacher} — ${day} — الحصة ${period}
+${one(day,period)}`
+        :`${t.teacher} — ${day} — Period ${period}
+${one(day,period)}`,
+      source:`Teachers timetable — ${t.teacher}, page ${t.page}`
+    };
+  }
+
+  if(day){
+    const lines=Array.from(
+      {length:8},
+      (_,i)=>`P${i+1}: ${one(day,i+1)}`
+    );
+
+    return {
+      answer:`${t.teacher} — ${day}
+${lines.join('\n')}`,
+      source:`Teachers timetable — ${t.teacher}, page ${t.page}`
+    };
+  }
+
+  const days=[
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday'
+  ];
+
+  const text=days.map(
+    d=>`${d}
+${Array.from({length:8},(_,i)=>`P${i+1}: ${one(d,i+1)}`).join('\n')}`
+  ).join('\n\n');
+
+  return {
+    answer:`${t.teacher}
+${text}`,
+    source:`Teachers timetable — ${t.teacher}, page ${t.page}`
+  };
+}
+
+function fixed(route,ar){
+  switch(route.intent){
+
+    case'contact':
+      return {
+        answer:ar
+          ?`للتواصل العام مع المدرسة:
+اتصال: ${CONTACT.phone}
+واتساب: ${CONTACT.whatsapp}`
+          :`General school contact:
+Call: ${CONTACT.phone}
+WhatsApp: ${CONTACT.whatsapp}`,
+        source:'Creator-approved KBZ contact'
+      };
+
+    case'clinic':
+      return {
+        answer:ar
+          ?`رقم عيادة المدرسة: ${CLINIC}`
+          :`School clinic: ${CLINIC}`,
+        source:'Creator-approved clinic contact'
+      };
+
+    case'books':
+      return {
+        answer:ar
+          ?`لأي استفسار عن الكتب المدرسية، تواصل عبر واتساب:
+${BOOKS.display}
+${BOOKS.url}`
+          :`For any school-books question, contact the designated WhatsApp:
+${BOOKS.display}
+${BOOKS.url}`,
+        source:'Creator-approved books contact'
+      };
+
+    case'alef':
+      return {
+        answer:ar
+          ?`لأي استفسار أو مشكلة في منصة ألف:
+${ALEF.display}
+${ALEF.url}`
+          :`For any Alef Platform question or support issue:
+${ALEF.display}
+${ALEF.url}`,
+        source:'Creator-approved Alef contact'
+      };
+
+    case'lms':
+      return {
+        answer:ar
+          ?`لتغيير/إعادة تعيين كلمة مرور الطالب أو مشاكل البريد/LMS:
+${LMS.display}
+${LMS.url}`
+          :`For student password resets, student email/account issues, or LMS support:
+${LMS.display}
+${LMS.url}`,
+        source:'Creator-approved student account/LMS contact'
+      };
+
+    case'website':
+      return {
+        answer:ar
+          ?`الموقع الرسمي الحالي لمدرسة KBZ:
+${WEBSITE}`
+          :`Current official KBZ website:
+${WEBSITE}`,
+        source:'Creator-approved KBZ website'
+      };
+
+    case'grade_links':{
+      const g=Number(route.grade);
+
+      if(!GRADE_LINKS[g]){
+        return {
+          answer:ar
+            ?'يرجى تحديد الصف من 5 إلى 12.'
+            :'Please specify a grade from 5 to 12.'
+        };
+      }
+
+      const L=GRADE_LINKS[g];
+
+      if(route.channel==='telegram'){
+        return {
+          answer:`Grade ${g} Telegram:
+${L.telegram}`,
+          source:'Creator-provided official grade link'
+        };
+      }
+
+      if(route.channel==='whatsapp'){
+        return {
+          answer:`Grade ${g} WhatsApp:
+${L.whatsapp}`,
+          source:'Creator-provided official grade link'
+        };
+      }
+
+      return {
+        answer:`Grade ${g}
+Telegram: ${L.telegram}
+WhatsApp: ${L.whatsapp}`,
+        source:'Creator-provided official grade links'
+      };
+    }
+
+    case'period_times':{
+      const g=Number(route.grade);
+
+      if(!g||g<5||g>12){
+        return {
+          answer:ar
+            ?'يرجى تحديد الصف من 5 إلى 12 لأن أوقات الحصص تختلف بين 5–9 و10–12.'
+            :'Please specify Grade 5–12 because period times differ for Grades 5–9 and 10–12.'
+        };
+      }
+
+      const p=PERIODS[g<=9?'junior':'senior'];
+
+      if(route.period){
+        return {
+          answer:ar
+            ?`الصف ${g} — الحصة ${route.period}: ${p[route.period]}`
+            :`Grade ${g} — Period ${route.period}: ${p[route.period]}`,
+          source:'Creator-approved KBZ period times'
+        };
+      }
+
+      return {
+        answer:`Grade ${g}
+${Object.entries(p).map(([k,v])=>`P${k}: ${v}`).join('\n')}`,
+        source:'Creator-approved KBZ period times'
+      };
+    }
+
+    default:
+      return null;
   }
 }
 
-export default rows;
+async function classify(message){
+  if(!process.env.OPENAI_API_KEY)
+    throw new Error('OPENAI_API_KEY is not configured in Vercel.');
+
+  const client=new OpenAI({
+    apiKey:process.env.OPENAI_API_KEY
+  });
+
+  const schema={
+    type:'object',
+    additionalProperties:false,
+    properties:{
+      intent:{
+        type:'string',
+        enum:[
+          'class_timetable',
+          'teacher_timetable',
+          'period_times',
+          'contact',
+          'clinic',
+          'books',
+          'alef',
+          'lms',
+          'grade_links',
+          'website',
+          'unsupported'
+        ]
+      },
+      section:{type:['string','null']},
+      teacher:{type:['string','null']},
+      day:{type:['string','null']},
+      period:{type:['integer','null']},
+      grade:{type:['integer','null']},
+      channel:{
+        type:['string','null'],
+        enum:['telegram','whatsapp',null]
+      }
+    },
+    required:[
+      'intent',
+      'section',
+      'teacher',
+      'day',
+      'period',
+      'grade',
+      'channel'
+    ]
+  };
+
+  const instructions=`
+You route questions for Khalifa Bin Zayed School (KBZ), Al Ain.
+
+Return only structured data.
+Never answer the question yourself.
+
+Use only the allowed intents.
+
+Class sections:
+${sections.join(', ')}
+
+Teacher page headings:
+${teacherNames.join(', ')}
+
+For teacher queries, set teacher to the exact matching teacher page heading when uniquely supported.
+
+Arabic teacher alias rules:
+سهيل كساسبة/الكساسبة = Sohail Kasasbeh.
+سهيل الشامسي = Sohail Alshamsi.
+These are different people.
+Never merge similar names.
+
+Normalize section shorthand only when unambiguous.
+
+IMPORTANT CLASS RULE:
+If the user includes a valid class/section code such as:
+5/G1
+7G2
+9 A1
+Grade 10 G1
+11G1
+12/A1S1
+
+and asks about its timetable, schedule, subjects, periods, day, or lessons,
+use class_timetable.
+
+A bare valid section code should also default to class_timetable.
+
+Never interpret a class section such as 11G1 as a grade communication link.
+
+Use grade_links ONLY when the user explicitly asks for:
+Telegram,
+WhatsApp,
+grade group,
+or communication link.
+
+Use period_times only for bell/period times by grade when no class section is requested.
+
+Day must be English Monday-Friday or null.
+Period must be 1-8 or null.
+Grade must be 5-12 or null.
+
+For school-specific questions outside approved categories use unsupported.
+`;
+
+  const resp=await client.responses.create({
+    model:process.env.OPENAI_MODEL||'gpt-5-mini',
+    instructions,
+    input:message,
+    text:{
+      format:{
+        type:'json_schema',
+        name:'kbz_route',
+        strict:true,
+        schema
+      }
+    }
+  });
+
+  return JSON.parse(resp.output_text)
+}
+
+export default async function handler(req,res){
+
+  if(req.method!=='POST'){
+    return res.status(405).json({
+      error:'Method not allowed'
+    });
+  }
+
+  const ip=(
+    req.headers['x-forwarded-for']
+    ||req.socket?.remoteAddress
+    ||'unknown'
+  ).toString().split(',')[0].trim();
+
+  const now=Date.now();
+  const rec=rate.get(ip)||[];
+  const recent=rec.filter(t=>now-t<60000);
+
+  if(recent.length>=20){
+    return res.status(429).json({
+      error:'Too many questions. Please wait a minute and try again.'
+    });
+  }
+
+  recent.push(now);
+  rate.set(ip,recent);
+
+  const message=String(req.body?.message||'').trim();
+
+  if(!message||message.length>500){
+    return res.status(400).json({
+      error:'Please enter a question up to 500 characters.'
+    });
+  }
+
+  const ar=isArabic(message);
+
+  try{
+    let route=localIntent(message)||await classify(message);
+
+    if(route.day){
+      route.day=dayName(route.day);
+    }
+
+    let result=fixed(route,ar);
+
+    if(!result&&route.intent==='class_timetable'){
+      result=formatClass(route,ar);
+    }
+
+    if(!result&&route.intent==='teacher_timetable'){
+      result=formatTeacher(route,ar);
+    }
+
+    if(!result){
+      result={
+        answer:ar
+          ?'أستطيع الإجابة فقط من بيانات KBZ المعتمدة: الجداول، أوقات الحصص، وسائل التواصل، المجموعات، الكتب، ألف، LMS والعيادة. لا أملك مصدراً معتمداً لهذا السؤال.'
+          :'I can only answer from approved KBZ data: timetables, period times, contacts, grade groups, books, Alef, LMS and the clinic. I do not have an approved source for that question.'
+      };
+    }
+
+    return res.status(200).json(result);
+
+  }catch(e){
+    console.error(e);
+
+    return res.status(500).json({
+      error:e?.message||'Server error'
+    });
+  }
+}
