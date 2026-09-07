@@ -17,26 +17,55 @@ function extractGrade(s){
   return m?Number(m[1]):null
 }
 
-function compactSection(s=''){
-  return String(s).toUpperCase().replace(/[^A-Z0-9]/g,'');
-}
-
 function extractSection(s=''){
   const q=String(s).toUpperCase();
-
-  // Match only real KBZ sections contained in classes.js.
-  // Supports 11/G1, 11G1, Grade 11 G1, 11 G 1, etc.
   const compactQ=q.replace(/[^A-Z0-9]/g,'');
-  const matches=sections.filter(sec=>compactQ.includes(compactSection(sec)));
 
-  if(matches.length===1)return matches[0];
+  // 1. Exact match against a real KBZ section.
+  // Examples: 11G1 -> 11/G1, 12G1S1 -> 12/G1S1
+  const exactMatches=sections.filter(
+    sec=>compactQ.includes(compactSection(sec))
+  );
 
-  const m=q.match(/(?:GRADE|GR)?\s*(1[0-2]|[5-9])\s*\/?\s*([AG])\s*(\d)(?:\s*(S)\s*(\d))?/i);
+  if(exactMatches.length===1){
+    return exactMatches[0];
+  }
 
-  if(m){
-    const wanted=`${m[1]}/${m[2].toUpperCase()}${m[3]}${m[4]?`S${m[5]}`:''}`;
-    const exact=sections.find(sec=>compactSection(sec)===compactSection(wanted));
-    if(exact)return exact;
+  // 2. Parse shorthand:
+  // "12 g1", "grade 12 g1", "12/g1", "12 a2", etc.
+  const m=q.match(
+    /(?:GRADE|GR)?\s*(1[0-2]|[5-9])\s*\/?\s*([AG])\s*(\d)(?:\s*(?:S)\s*(\d))?/i
+  );
+
+  if(!m)return null;
+
+  const grade=m[1];
+  const stream=m[2].toUpperCase();
+  const number=m[3];
+  const sub=m[4]||null;
+
+  // User explicitly supplied S1/S2.
+  if(sub){
+    const wanted=`${grade}/${stream}${number}S${sub}`;
+
+    return sections.find(
+      sec=>compactSection(sec)===compactSection(wanted)
+    )||null;
+  }
+
+  // User omitted the S suffix.
+  // Example: "12 G1" should match "12/G1S1" ONLY if unique.
+  const base=compactSection(`${grade}/${stream}${number}`);
+
+  const candidates=sections.filter(sec=>{
+    const c=compactSection(sec);
+
+    return c===base || c.startsWith(base+'S');
+  });
+
+  // Never guess between multiple KBZ sections.
+  if(candidates.length===1){
+    return candidates[0];
   }
 
   return null;
@@ -62,8 +91,57 @@ function extractDay(s=''){
 
 function extractPeriod(s=''){
   const n=norm(s);
-  const m=n.match(/\b(?:period|p|الحصة|حصه|حصة)\s*([1-8])\b/i);
-  return m?Number(m[1]):null;
+
+  // period 5 / P5 / period #5
+  let m=n.match(
+    /\b(?:period|p|الحصة|حصه|حصة)\s*(?:number|no|#)?\s*([1-8])\b/i
+  );
+
+  if(m)return Number(m[1]);
+
+  // 5th period / 3rd period / 1st period
+  m=n.match(
+    /\b([1-8])(?:st|nd|rd|th)?\s+(?:period|الحصة|حصه|حصة)\b/i
+  );
+
+  if(m)return Number(m[1]);
+
+  // English written numbers:
+  // first period, fifth period, etc.
+  const words={
+    first:1,
+    second:2,
+    third:3,
+    fourth:4,
+    fifth:5,
+    sixth:6,
+    seventh:7,
+    eighth:8
+  };
+
+  for(const [word,num] of Object.entries(words)){
+    const re=new RegExp(`\\b${word}\\s+period\\b`,'i');
+
+    if(re.test(n))return num;
+  }
+
+  // Arabic written/ordinal forms
+  const arabic=[
+    [1,/الحصة\s*(?:الأولى|الاولى|الأول|الاول)/],
+    [2,/الحصة\s*(?:الثانية|الثانيه|الثاني)/],
+    [3,/الحصة\s*(?:الثالثة|الثالثه|الثالث)/],
+    [4,/الحصة\s*(?:الرابعة|الرابعه|الرابع)/],
+    [5,/الحصة\s*(?:الخامسة|الخامسه|الخامس)/],
+    [6,/الحصة\s*(?:السادسة|السادسه|السادس)/],
+    [7,/الحصة\s*(?:السابعة|السابعه|السابع)/],
+    [8,/الحصة\s*(?:الثامنة|الثامنه|الثامن)/]
+  ];
+
+  for(const [num,re] of arabic){
+    if(re.test(n))return num;
+  }
+
+  return null;
 }
 
 function localIntent(q){
