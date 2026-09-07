@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b5f53" />
+  <title>KBZ School Assistant</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div class="brandmark" aria-hidden="true">KBZ</div>
+      <div>
+        <h1>KBZ School Assistant</h1>
+        <p>مساعد مدرسة خليفة بن زايد · Khalifa Bin Zayed School, Al Ain</p>
+      </div>
+    </header>
+
+    <section class="notice">
+      <strong>Official school information assistant</strong>
+      <span>Answers are limited to creator-approved KBZ information and timetables.</span>
+    </section>
+
+    <section class="quick" aria-label="Quick questions">
+      <button data-q="What are the period times for Grade 9?">🕐 Period times</button>
+      <button data-q="Show me the Monday timetable for 9/A1">📅 Class timetable</button>
+      <button data-q="What is the timetable for teacher Sohail Kasasbeh on Monday?">👨‍🏫 Teacher timetable</button>
+      <button data-q="How can I contact the school?">☎️ Contact school</button>
+      <button data-q="I need help with Alef Platform">💻 Alef support</button>
+      <button data-q="Give me the Grade 10 WhatsApp group">💬 Grade groups</button>
+    </section>
+
+    <section id="chat" class="chat" aria-live="polite">
+      <article class="message assistant">
+        <div class="bubble">
+          <p><strong>Welcome / أهلاً وسهلاً</strong></p>
+          <p>Ask me about class or teacher timetables, period times, school contacts, grade groups, books, Alef, LMS, or the school clinic.</p>
+          <p dir="rtl">اسألني عن جداول الصفوف أو المعلمين، أوقات الحصص، وسائل التواصل، مجموعات الصفوف، الكتب، منصة ألف، LMS أو عيادة المدرسة.</p>
+        </div>
+      </article>
+    </section>
+
+    <form id="askForm" class="composer">
+      <label class="sr-only" for="question">Ask a question</label>
+      <textarea id="question" rows="1" maxlength="500" placeholder="Ask a KBZ question… / اكتب سؤالك…" required></textarea>
+      <button id="send" type="submit" aria-label="Send">➤</button>
+    </form>
+
+    <footer>
+      <a href="https://sites.google.com/view/kbzschool/home" target="_blank" rel="noopener">Official KBZ website</a>
+      <span>•</span>
+      <span>School general contact: 050 922 4914</span>
+    </footer>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
