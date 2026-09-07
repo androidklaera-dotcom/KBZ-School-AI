@@ -17,6 +17,10 @@ function extractGrade(s){
   return m?Number(m[1]):null
 }
 
+function compactSection(s=''){
+  return String(s).toUpperCase().replace(/[^A-Z0-9]/g,'');
+}
+
 function extractSection(s=''){
   const q=String(s).toUpperCase();
   const compactQ=q.replace(/[^A-Z0-9]/g,'');
